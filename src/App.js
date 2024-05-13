@@ -1,24 +1,29 @@
-import logo from './logo.svg';
-import './App.css';
+import "./App.css";
+import { BrowserRouter as Router, Routes, Route } from "react-router-dom";
+import Dashboard from "./pages/Dashboard";
+import Signup from "./pages/Signup";
+import { ChakraProvider } from "@chakra-ui/react";
+import Login from "./pages/Login";
+import GetAllUsers from "./component/GetAllUsers";
+import AuthContextProvider from "./context/AuthContext";
+import SingleUser from "./component/SingleUser";
 
 function App() {
   return (
-    <div className="App">
-      <header className="App-header">
-        <img src={logo} className="App-logo" alt="logo" />
-        <p>
-          Edit <code>src/App.js</code> and save to reload.
-        </p>
-        <a
-          className="App-link"
-          href="https://reactjs.org"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          Learn React
-        </a>
-      </header>
-    </div>
+    <ChakraProvider>
+      <AuthContextProvider>
+      <Router>
+        <Routes>
+          <Route path="/" element={<Signup />} />
+          <Route path="/login" element={<Login />} />
+          
+          <Route path="/dash" element={<Dashboard />} />
+          <Route path="/getall" element={<GetAllUsers />} />
+          <Route path="/singleuser/:id" element={<SingleUser />} />
+        </Routes>
+      </Router>
+      </AuthContextProvider>
+    </ChakraProvider>
   );
 }
 
