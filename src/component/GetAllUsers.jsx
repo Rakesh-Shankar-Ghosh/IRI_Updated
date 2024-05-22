@@ -2,10 +2,12 @@ import React, { useState, useEffect } from "react";
 import axios from "axios";
 import { Box, Heading, Button, Flex, Text } from "@chakra-ui/react";
 import { useNavigate } from "react-router-dom";
-import SingleUser from "./SingleUser";
+import { useAuth } from "../context/AuthContext";
+
 
 const GetAllUsers = () => {
   const [users, setUsers] = useState([]);
+  const [auth] = useAuth();
 
   useEffect(() => {
     const fetchData = async () => {
@@ -24,6 +26,7 @@ const GetAllUsers = () => {
 
   const handleDeleteUser = async (id) => {
     try {
+      alert('Are u sure!!')
       await axios.delete(
         `${process.env.REACT_APP_API}/users/delete-user/${id}`
       );
@@ -40,7 +43,7 @@ const GetAllUsers = () => {
   const navigate = useNavigate();
   const handleGetUser = async (id) => {
     try {
-      navigate(`/singleuser/${id}`); // Pass user data as state
+      navigate(`/profile/dashboard/singleuser/${id}`); // Pass user data as state
     } catch (error) {
       console.error("Error fetching user:", error);
     }
@@ -56,7 +59,7 @@ const GetAllUsers = () => {
       <Box>
         <Heading mb={4}>All Users = {users.length}</Heading>
         {users.map((user) => (
-          <Box key={user.id} p={4} borderWidth="1px" borderRadius="md" mb={4}>
+          <Box key={user.id} p={4} borderWidth="4px" borderRadius="md" mb={4}>
             <Text>Name: {user.name}</Text>
             <Text>Email: {user.email}</Text>
             <Text>Country: {user.country}</Text>
@@ -65,6 +68,7 @@ const GetAllUsers = () => {
               <Button
                 colorScheme="red"
                 onClick={() => handleDeleteUser(user.id)}
+                isDisabled={user.id === auth.user.id}
               >
                 Delete
               </Button>

@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import {
   Box,
   Heading,
@@ -8,10 +8,19 @@ import {
   Button,
 } from "@chakra-ui/react";
 import axios from "axios";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import * as Yup from "yup";
-
+import { useAuth } from "../context/AuthContext";
 const Signup = () => {
+  const navigate = useNavigate(); // Hook to get the navigate function
+  const [auth] = useAuth(); // Only using setAuth, user data is not required
+
+  useEffect(() => {
+    if (auth?.accessToken) {
+      navigate("/profile/dashboard");
+    }
+  }, [navigate]);
+
   const [formData, setFormData] = useState({
     name: "",
     email: "",
@@ -42,7 +51,6 @@ const Signup = () => {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    
 
     try {
       // Validate form data
@@ -56,11 +64,8 @@ const Signup = () => {
       console.log(res.data); // Assuming the API returns the newly created user data
       if (res) {
         alert("Successfully Signup now login please-- see inspect to details");
-        
+        navigate("/login");
       }
-
-
-    
 
       // Reset form data
       setFormData({
@@ -160,12 +165,12 @@ const Signup = () => {
         </Heading>
       </form>
       <div>
-      <Link to="/login" style={{ textDecoration: "none" }}>
-        <Button colorScheme="green" width="100%">
-          Login
-        </Button>
-      </Link>
-    </div>
+        <Link to="/login" style={{ textDecoration: "none" }}>
+          <Button colorScheme="green" width="100%">
+            Login
+          </Button>
+        </Link>
+      </div>
     </Box>
   );
 };
