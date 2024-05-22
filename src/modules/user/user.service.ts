@@ -24,9 +24,6 @@ import { InjectRedis } from '@nestjs-modules/ioredis';
 
 @Injectable()
 export class UserService {
-  
-  
-
   constructor(
     private readonly jwtService: JwtService,
     @InjectRedis() private readonly redis: Redis,
@@ -34,116 +31,6 @@ export class UserService {
     private readonly userRepository: Repository<User>,
   ) {}
 
-
-  async dummyTest(): Promise<String> {
-
-    return 'Dummy test';
-  }
-
-  async getProfile(request: any): Promise<any> {
-    // Access the result from the request object
-    const result = request.result;
-    console.log('Calling from here', result); // Print the result
-    return 'Happy Birthday';
-  }
-
-  async loginUser(loginUserDto: LoginUserDto): Promise<any> {
-    // Find user by email
-    const user = await this.userRepository.findOne({
-      where: { email: loginUserDto.email },
-    });
-    if (!user) {
-      return {
-        statusCode: HttpStatus.GONE,
-        message: 'User Not Found',
-        success:false
-      };
-    }
-
-    // Check if password matches
-    const isPasswordValid = await bcrypt.compare(
-      loginUserDto.password,
-      user.password,
-    );
-    if (!isPasswordValid) {
-      return {
-        statusCode: HttpStatus.GONE,
-        message: 'Invalid password',
-        success:false
-      }; // Invalid password
-    }
-
-    // Generate JWT token
-    const token = this.generateAccessToken(Number(user.id));
-
-    const { id, email, name, country, profession } = user; // remove password from body before  to go redish
-
-    const RedisData = JSON.stringify({ id, email, name, country, profession });
-    const RedisKey = token;
-
-    await this.redis.set(RedisKey, RedisData, (err) => {
-      //we can log eror hetr
-    });
-    await this.redis.expire(RedisKey, 3000); //300seeec = 5 mnnit
-    const redisUserInfoData = await this.redis.get(RedisKey); //if needed then send
-    
-
-    return {
-      statusCode: HttpStatus.OK,
-      success: true,
-      token,
-      user
-      // redisUserInfoData, // (optional for now )it will be again Parse to JSON when i catch it in frontend
-    };
-  }
-
-  verifyToken(token: string): any {
-    try {
-      // Verify the JWT token using the secret key
-      const decoded = jwt.verify(token, 'usygfjhsdfjhbsdf');
-
-      console.log(decoded);
-      if(decoded){
-        return decoded;
-      }
-      return 'not verfied';
-      
-    } catch (error) {
-      // If verification fails (e.g., invalid token or signature), throw an error
-      throw new Error('Invalid token');
-    }
-  }
-
-  generateAccessToken(userId: number): string {
-    // Generate JWT token with user ID as payload and expiry time
-    const payload = { userId };
-    return this.jwtService.sign(payload, { expiresIn: '1d' });
-  }
-
-  async generateRefreshToken(token: string): Promise<any> {
-    // Generate JWT token with user ID as payload and expiry time
-    const {userId} = this.verifyToken(token);
-
-    const redisUserInfoData = await this.redis.get(token)
-
-    if((userId && redisUserInfoData) !=null){
-      const refreshToken = this.generateAccessToken(userId);
-      await this.redis.set(refreshToken, JSON.stringify(redisUserInfoData));
-      await this.redis.expire(refreshToken, 3000);
-
-      return {
-        statusCode: HttpStatus.OK,
-        success: true,
-        refreshToken
-        // redisUserInfoData, // (optional for now )it will be again Parse to JSON when i catch it in frontend
-      };
-
-    }
-
-    else{ return 'vaerification failed'}
-  }
-
-  //done
   async signUp(createUserDto: CreateUserDto): Promise<any> {
     try {
       // Check if a user with the same email already exists
@@ -161,36 +48,85 @@ export class UserService {
       const hashedPassword = await bcrypt.hash(createUserDto.password, 10);
 
       // Create a new user entity with hashed password
-      const newUser = this.userRepository.create({
+      const user = this.userRepository.create({
         ...createUserDto,
         password: hashedPassword,
       });
 
       // Save the user
-      await this.userRepository.save(newUser);
-      const access_token = this.generateAccessToken(newUser.id);
-  
+      await this.userRepository.save(user);
+      const access_token = this.generateAccessToken(user.id);
+
       return {
         statusCode: HttpStatus.CREATED,
         message: 'User created successfully',
-        user: newUser,
-        access_token
+        user,
+        access_token,
       };
     } catch (error) {
-      if (error instanceof HttpException) {
-        
+      return {
+        statusCode: HttpStatus.BAD_GATEWAY,
+        success: true,
+        error,
+      };
+    }
+  }
+
+  async loginUser(loginUserDto: LoginUserDto): Promise<any> {
+    try {
+      // Find user by email
+      const getUser = await this.userRepository.findOne({
+        where: { email: loginUserDto.email },
+      });
+      if (!getUser) {
         return {
-          statusCode: HttpStatus.BAD_GATEWAY,
-          success:true,
-          error
+          statusCode: HttpStatus.GONE,
+          message: 'User Not Found',
+          success: false,
         };
-      } else {
-        // Handle other errors
-        throw new HttpException(
-          'Internal server error',
-          HttpStatus.INTERNAL_SERVER_ERROR,
-        );
       }
+
+      // Check if password matches
+      const isPasswordValid = await bcrypt.compare(
+        loginUserDto.password,
+        getUser.password,
+      );
+      if (!isPasswordValid) {
+        return {
+          statusCode: HttpStatus.NOT_ACCEPTABLE,
+          message: 'Invalid password',
+          success: false,
+        }; // Invalid password
+      }
+
+      const { password, ...user } = getUser;
+      const userData = JSON.stringify({
+        user,
+      });
+        // Generate JWT token
+        // const accessToken = this.generateAccessToken(Number(getUser.id));
+
+      const {accessToken, refreshToken} = await this.generateTokens(getUser.id);
+
+      // await this.redis.set(accessToken, userData, 'EX', 90000);
+      await this.redis.setex(`DataPair:${accessToken}`, 300, userData);
+      await this.redis.setex(`RefreshPair:${accessToken}`, 90000, refreshToken);
+
+
+      return {
+        statusCode: HttpStatus.OK,
+        message: `Login successfully done`,
+        success: true,
+        accessToken,
+        user,
+        refreshToken
+      };
+    } catch (error) {
+      return {
+        statusCode: HttpStatus.NOT_ACCEPTABLE,
+        success: false,
+        message: error.message,
+      };
     }
   }
 
@@ -205,8 +141,8 @@ export class UserService {
     } catch (error) {
       return {
         statusCode: HttpStatus.MISDIRECTED,
-        success:false,
-        error
+        success: false,
+        message: error.message,
       };
     }
   }
@@ -214,20 +150,25 @@ export class UserService {
   async findUserById(id: string): Promise<any> {
     const userId = Number(id);
     try {
-      const user = await this.userRepository.findOne({ where: { id: userId } });
-      if (!user) {
-        throw new NotFoundException('User not found');
+      const getUser = await this.userRepository.findOne({
+        where: { id: userId },
+      });
+      if (!getUser) {
+        throw new NotFoundException('User not found'); //single lile error handling
       }
+      const { password, ...user } = getUser;
       return {
         statusCode: HttpStatus.OK,
         message: 'User retrieved successfully',
+        success: true,
         user,
       };
     } catch (error) {
-      throw new HttpException(
-        'Internal server error',
-        HttpStatus.INTERNAL_SERVER_ERROR,
-      );
+      return {
+        statusCode: HttpStatus.NOT_ACCEPTABLE,
+        success: false,
+        message: error.message,
+      };
     }
   }
 
@@ -248,19 +189,21 @@ export class UserService {
         message: 'User deleted successfully',
       };
     } catch (error) {
-      // Handle potential errors (e.g., database errors)
-      throw new HttpException(
-        'Internal server error',
-        HttpStatus.INTERNAL_SERVER_ERROR,
-      );
+      return {
+        statusCode: HttpStatus.NOT_ACCEPTABLE,
+        success: false,
+        message: error.message,
+      };
     }
   }
 
   async updateUserById(id: number, updateUserDto: UpdateUserDto): Promise<any> {
     try {
       const userId = Number(id);
-      const user = await this.userRepository.findOne({ where: { id: userId } });
-      if (!user) {
+      const getUser = await this.userRepository.findOne({
+        where: { id: userId },
+      });
+      if (!getUser) {
         throw new HttpException('User not found', HttpStatus.NOT_FOUND);
       }
 
@@ -268,27 +211,26 @@ export class UserService {
       for (const [key, value] of Object.entries(updateUserDto)) {
         // Check if the field exists and is not confirmPassword or empty
         if (value !== undefined && value !== '') {
-          user[key] = value;
+          getUser[key] = value;
         }
       }
 
       // Save the updated user
-      const updatedUser = await this.userRepository.save(user);
+      const updatedUser = await this.userRepository.save(getUser);
+      const { password, ...user } = updatedUser;
 
       return {
         statusCode: HttpStatus.OK,
         message: 'User updated successfully',
-        updatedUser: updatedUser,
+        success: true,
+        user,
       };
     } catch (error) {
-      if (error instanceof HttpException) {
-        throw error; // Re-throw HttpException
-      } else {
-        throw new HttpException(
-          'Internal server error',
-          HttpStatus.INTERNAL_SERVER_ERROR,
-        );
-      }
+      return {
+        statusCode: HttpStatus.NOT_ACCEPTABLE,
+        success: false,
+        message: error.message,
+      };
     }
   }
 
@@ -335,29 +277,204 @@ export class UserService {
       return {
         statusCode: HttpStatus.OK,
         message: 'Password updated successfully',
-        updatedUser: updatedUser,
+        success: true,
       };
     } catch (error) {
-      if (error instanceof HttpException) {
-        throw error; // Re-throw HttpException
-      } else {
-        throw new HttpException(
-          'Internal server error',
-          HttpStatus.INTERNAL_SERVER_ERROR,
-        );
-      }
+      return {
+        statusCode: HttpStatus.NOT_ACCEPTABLE,
+        success: false,
+        message: error.message,
+      };
     }
   }
 
-  async TestRedis(): Promise<any> {
-    await this.redis.set('name', 'Ashoke Kumar Ghosh', (err) => {
-      console.log(err);
-    });
-    await this.redis.expire('name', 50);
-    const redisData = await this.redis.get('name');
-    return { redisData };
+  async logOut(request: any): Promise<any> {
+    try {
+      const accessToken = request.accessToken;
+      
+      const result = request.result;
+
+
+      await this.redis.del(`DataPair:${accessToken}`);
+      await this.redis.del(`RefreshPair:${accessToken}`);
+
+      
+      return {
+        success: true,
+        message: 'Successfully Logout',
+        
+      };
+    } catch (error) {
+      return {
+        success: false,
+        message: error.message,
+      };
+    }
   }
 
+  async authCheck(request: any): Promise<any> {
+    try {
+      const  {user}  = request.data;
+      const accessToken = request.accessToken;
+     
+      if (user) {
+        return {
+          success: true,
+          message: 'Auth Checked Successfully',
+          user,
+          accessToken
+        };
+      }
+      return {
+        success: false,
+        message: 'Authentication failed',
+      };
+    } catch (error) {
+      return {
+        success: false,
+        message: error.message,
+      };
+    }
+  }
+
+  verifyToken(token: string, secret: string): any {
+    try {
+      const decoded = jwt.verify(token, secret);
+
+      if (decoded) {
+        return decoded;
+      }
+      return {
+        message: 'Token Verification failed!!!',
+      };
+    } catch (error) {
+      return {
+        message: error.message,
+      };
+    }
+  }
+
+  generateAccessToken(userId: number): string {
+    return this.jwtService.sign(
+      { userId },
+      {
+        secret: process.env.JWT_ACCESS_SECRET,
+        expiresIn: '15m',
+      },
+    );
+  }
+
+  generateRefreshToken(userId: number): string {
+    return this.jwtService.sign(
+      { userId },
+      {
+        secret: process.env.JWT_REFRESH_SECRET,
+        expiresIn: '7d',
+      },
+    );
+  }
+
+  async generateTokens(userId: number): Promise<{ accessToken: string, refreshToken: string }> {
+    const accessToken = this.generateAccessToken(userId);
+    
+    const refreshToken = await new Promise<string>((resolve) => {
+      setTimeout(() => {
+        const token = this.generateRefreshToken(userId);
+        resolve(token);
+      }, 1500);
+    });
+
+    return { accessToken, refreshToken };
+  }
+
+
+  async getUerInforFromRedis(tokenObject: { accessToken: string }): Promise<any> {
+    try {
+      // Destructure the token from the tokenObject
+      const { accessToken } = tokenObject;
+
+      // console.log('GETING TOKWN', token);
+      // Retrieve the user information from Redis using the token
+      const getUser = await this.redis.get(`DataPair:${accessToken}`);
+      // console.log('getting data', getUser);
+
+      if (!getUser) {
+        return {
+          statusCode: HttpStatus.NOT_FOUND,
+          success: false,
+          message: 'Not found user data in redis',
+        };
+      }
+
+      // Parse the user information
+      const { user } = JSON.parse(getUser);
+
+      return {
+        statusCode: HttpStatus.OK,
+        success: true,
+        message: 'User retrieved from Redis',
+        user,
+        accessToken,
+      };
+    } catch (error) {
+      return {
+        statusCode: HttpStatus.SERVICE_UNAVAILABLE,
+        success: false,
+        message: error.message,
+      };
+    }
+  }
+
+
+  async requestRefreshingToken(tokenObject: { accessToken: string }): Promise<any> {
+    try {
+      // Destructure the token from the tokenObject
+      const { accessToken } = tokenObject;
+
+      const refreshToken = await this.redis.get(`RefreshPair:${accessToken}`);
+      const {userId} = this.verifyToken(refreshToken, process.env.JWT_REFRESH_SECRET)
+      if(!refreshToken || !userId)
+        {
+          return {
+            statusCode: HttpStatus.FORBIDDEN,
+            message: "RefreshToken not found",
+            success:false
+          }
+        }
+        const newAccessToken = this.generateAccessToken(userId);
+        if(!newAccessToken)
+          {
+            return {
+              statusCode: HttpStatus.FORBIDDEN,
+              message: "Access Token Not created",
+              success:false
+            }
+          }
+
+        await this.redis.rename(`DataPair:${accessToken}`, `DataPair:${newAccessToken}`);
+        await this.redis.rename(`RefreshPair:${accessToken}`, `RefreshPair:${newAccessToken}`);
+
+
+      return {
+        statusCode: HttpStatus.OK,
+        success: true,
+        message: 'Token has refreshed and new access Token given',
+        newAccessToken,
+      };
+    } catch (error) {
+      return {
+        statusCode: HttpStatus.SERVICE_UNAVAILABLE,
+        success: false,
+        message: error.message,
+      };
+    }
+  }
+
+
+  async dummyTest(): Promise<any>
+  {
+    return 'Dummy test';
+  }
 
 
 }

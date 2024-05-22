@@ -8,25 +8,27 @@ import { UserService } from './user.service';
 import { User } from './../../entity/user.entity';
 import { JwtModule } from '@nestjs/jwt';
 import { RedisModule } from '@nestjs-modules/ioredis';
-
-
+import { ConfigModule } from '@nestjs/config';
 @Module({
   imports: [
+    ConfigModule.forRoot({
+      isGlobal: true, // Makes the ConfigModule global, no need to import it in other modules
+    }),
+
     TypeOrmModule.forFeature([User]),
 
-    JwtModule.register({
-      secret: "usygfjhsdfjhbsdf", // Replace with  own secret key
-      signOptions: { expiresIn: '1d' }, // Set the token expiry time// dont care the time because we are using redish data for only 5 minit
+    JwtModule.registerAsync({
+      useFactory: async () => ({
+        secret: process.env.JWT_DEFAULT_SECRET,
+        signOptions: { expiresIn: '10m' },
+      }),
     }),
 
     RedisModule.forRoot({
       type: 'single',
-      url: process.env.REDIS_URL
+      url: process.env.REDIS_URL,
     }),
-
-    
   ],
-  
 
   controllers: [UserController],
   providers: [UserService],

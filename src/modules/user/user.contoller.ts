@@ -23,11 +23,6 @@ import { UserGuard } from '../../middleware/user.gurd';
 export class UserController {
   constructor(private readonly userService: UserService) {}
 
-  @Get('/dummyTest')
-  async dummyTest(): Promise<any> {
-    return this.userService.dummyTest();
-  }
-
   @Post('/signup')
   async signUp(@Body() createUserDto: CreateUserDto): Promise<User> {
     return this.userService.signUp(createUserDto);
@@ -39,6 +34,7 @@ export class UserController {
   }
 
   @Get('/get-user/:id')
+
   async findUserById(@Param('id') id: string): Promise<any> {
     return this.userService.findUserById(id);
   }
@@ -66,36 +62,33 @@ export class UserController {
       updatePasswordUserDto,
     ); // Parse id to number
   }
-
   @Post('/login')
   async loginUser(@Body() loginUserDto: LoginUserDto): Promise<any> {
     return this.userService.loginUser(loginUserDto);
   }
 
-  @Get('/test')
-  async testRedis(): Promise<any> {
-    return this.userService.TestRedis();
-  }
-
-  //THE PROVE OF REDIS DATA AND VALIDATION FOR 5 MINIT
-  @Get('/protected')
+  @Post('/logout')
   @UseGuards(UserGuard)
-  async getProfile(@Req() request: any): Promise<any> {
-    return this.userService.getProfile(request);
+  async logOut(@Req() request: any): Promise<any> {
+    return this.userService.logOut(request);
   }
 
-  @Post('/refresh-token')
+  @Get('/auth-check')
   @UseGuards(UserGuard)
-  async generateRefreshToken(token: string): Promise<any> {
-    return this.userService.generateRefreshToken(token);
+  async authCheck(@Req() request: any): Promise<any> {
+    return this.userService.authCheck(request);
   }
 
-  // UseGuard is a auth cheker if we use this before any route
-  // then first it checks it has token in its headers or not
-  // if token abiable then then cheks it valid or not by jwt
-  // if vaid by jwt then it pass to redis as key, if redis has the same key then it retrive infor from redis
-  // and finally give permission to next service method
+  @Post('/get-login-user')
+  async getUserInforFromRedis(@Body() accessToken: { accessToken: string }): Promise<any> {
+    return this.userService.getUerInforFromRedis(accessToken);
+  }
 
-  //example.. if we use guard top of getusebyId  route the we cant fetch it but
-  // if we login in and get token and then set to header Authorization, then we access the route
+  @Post('/request-refresh-token')
+  async requestRefreshToken(@ Body() accessToken: { accessToken: string }): Promise<any> {
+    return this.userService.requestRefreshingToken(accessToken);
+  }
+
+
+
 }
